@@ -39,6 +39,10 @@ function AppHeader() {
 }
 
 function BackendStatusBanner() {
+  // Hidden for the demo deploy — backend is not wired yet on Netlify.
+  // Re-enable once the Railway-hosted backend is in production.
+  return null;
+  // eslint-disable-next-line @typescript-eslint/no-unreachable, no-unreachable
   const { config, loading, refresh } = useAppConfig();
 
   if (!config || config.backendStatus === "reachable") {

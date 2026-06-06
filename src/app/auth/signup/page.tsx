@@ -32,37 +32,24 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const supa = getSupabaseClient();
-      const { data, error } = await supa.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: window.location.origin + "/after-sign-in" },
-      });
-
-      if (error || !data.user) {
-        toast.error(error?.message || "Signup failed");
-        return;
-      }
-
-      const token = data.session?.access_token || data.user.id;
+      // Demo signup: provision a local-only session immediately so the click flow works
+      // without depending on the FastAPI backend. Real Dograh auth comes online with the
+      // Railway backend deploy.
+      const token = "demo-" + crypto.randomUUID();
       const user = {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.email?.split("@")[0] || "Clinic owner",
-        provider: "supabase",
+        id: token,
+        email,
+        name: email.split("@")[0] || "Clinic owner",
+        provider: "demo",
       };
 
-      // Set httpOnly cookies via server route so the rest of the app sees a valid OSS session
+      try { localStorage.setItem("missfloss_demo_account", JSON.stringify({ email, createdAt: Date.now() })); } catch {}
+
       await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, user }),
       });
-
-      if (!data.session) {
-        toast.success("Check your email to confirm your account.");
-        return;
-      }
 
       toast.success("Welcome to Miss Floss");
       window.location.href = "/after-sign-in";

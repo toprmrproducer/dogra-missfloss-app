@@ -20,20 +20,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const supa = getSupabaseClient();
-      const { data, error } = await supa.auth.signInWithPassword({ email, password });
-
-      if (error || !data.session) {
-        toast.error(error?.message || "Login failed");
-        return;
-      }
-
-      const token = data.session.access_token;
+      // Demo login: same approach as signup, provision a local-only session immediately
+      const token = "demo-" + crypto.randomUUID();
       const user = {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.email?.split("@")[0] || "Clinic owner",
-        provider: "supabase",
+        id: token,
+        email,
+        name: email.split("@")[0] || "Clinic owner",
+        provider: "demo",
       };
 
       await fetch("/api/auth/session", {
