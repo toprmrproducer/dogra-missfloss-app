@@ -11,12 +11,9 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   async rewrites() {
+    // Demo deploy: handle /api/v1/* via the local catchall route below instead
+    // of proxying to a Railway-hosted FastAPI. Real backend wiring lands with task #10.
     return [
-      // API proxy for backend calls (excluding Next.js API routes)
-      {
-        source: "/api/:path((?!config|auth).*)*",
-        destination: `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/:path*`,
-      },
       {
         source: "/ingest/static/:path*",
         destination: "https://us-assets.i.posthog.com/static/:path*",
