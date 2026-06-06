@@ -115,8 +115,8 @@ export function setStackRefreshCookie(refreshToken: string) {
   const expiryDate = new Date();
   expiryDate.setFullYear(expiryDate.getFullYear() + 1);
 
-  const isMiss FlossDomain = window.location.hostname.endsWith('.missfloss.ai');
-  const cookieDomainPart = isMiss FlossDomain ? '; domain=.missfloss.ai' : '';
+  const isMissFlossDomain = window.location.hostname.endsWith('.missfloss.ai');
+  const cookieDomainPart = isMissFlossDomain ? '; domain=.missfloss.ai' : '';
 
   document.cookie =
     `stack-refresh-${process.env.NEXT_PUBLIC_STACK_PROJECT_ID}=${refreshToken}; ` +
