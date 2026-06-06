@@ -311,12 +311,35 @@ function defaultsForPath(path: string, method: string): unknown {
   if (p === "/user/api-keys") return [];
   if (p === "/user/service-keys") return [];
 
-  if (p === "/workflow/count") return { total: 0, active: 0, inactive: 0 };
+  if (p === "/workflow/count") return { total: 1, active: 1, inactive: 0 };
   // The next three endpoints return raw arrays per SDK types.
-  if (p === "/workflow/fetch" || p === "/workflow/summary") return [];
+  if (p === "/workflow/fetch" || p === "/workflow/summary") {
+    return [{ id: 100001, name: "Miss Floss Reception", status: "active", created_at: new Date(0).toISOString(), total_runs: 0 }];
+  }
   if (p === "/workflow/templates") return [];
   if (p.startsWith("/workflow/") && p.endsWith("/runs")) return { runs: [], total: 0 };
-  if (p.startsWith("/workflow/")) return { id: 0, name: "", status: "draft", nodes: [], edges: [] };
+  if (/^\/workflow\/fetch\/\d+$/.test(p) || /^\/workflow\/\d+$/.test(p)) {
+    const idMatch = p.match(/(\d+)$/);
+    const wfId = idMatch ? Number(idMatch[1]) : 100001;
+    return {
+      id: wfId,
+      name: "Miss Floss Reception",
+      status: "draft",
+      created_at: new Date(0).toISOString(),
+      workflow_definition: {
+        nodes: [{
+          id: "1", type: "startCall",
+          position: { x: 175, y: 60 },
+          data: { name: "start call", prompt: "Hi, this is Miss Floss for your dental clinic. How can I help today?", is_start: true, allow_interrupt: false, invalid: false, validationMessage: null, add_global_prompt: false, delayed_start: false, selected_through_edge: false, hovered_through_edge: false, extraction_enabled: false, selected: false, dragging: false },
+        }],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 0.75 },
+      },
+      current_definition_id: null,
+      template_context_variables: {},
+    };
+  }
+  if (p.startsWith("/workflow/")) return { id: 0, name: "", status: "draft", workflow_definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }, current_definition_id: null, template_context_variables: {} };
 
   if (p === "/campaign" || p === "/campaign/") return { campaigns: [] };
   if (p.startsWith("/campaign/") && p.endsWith("/progress")) return { total: 0, completed: 0, in_progress: 0, failed: 0 };
@@ -326,7 +349,18 @@ function defaultsForPath(path: string, method: string): unknown {
   }
 
   if (p === "/organizations/telephony-providers/metadata") return { providers: TELEPHONY_PROVIDERS };
-  if (p === "/organizations/telephony-configs") return { configurations: [] };
+  if (p === "/organizations/telephony-configs") {
+    return {
+      configurations: [{
+        id: 200001,
+        name: "Demo Twilio prod",
+        provider: "twilio",
+        is_default_outbound: true,
+        created_at: new Date(0).toISOString(),
+        phone_number_count: 1,
+      }],
+    };
+  }
   if (p.includes("/telephony-config-warnings")) return { warnings: [] };
   if (p.startsWith("/organizations/telephony-configs/") && p.endsWith("/phone-numbers")) return { phone_numbers: [] };
   if (p.startsWith("/organizations/telephony-configs/")) {
