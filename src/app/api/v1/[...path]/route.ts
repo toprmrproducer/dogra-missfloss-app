@@ -3,65 +3,240 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * Demo backend stub. Catches every /api/v1/* request the UI makes and returns
  * shape-compatible defaults that mirror the generated SDK response types
- * (src/client/types.gen.ts) so each dashboard page renders cleanly without
- * a real FastAPI backend. Removed when the Railway-hosted backend lands
- * (Tasks.md #10) — drop this file and reset BACKEND_URL.
+ * (src/client/types.gen.ts) AND the runtime expectations of the form
+ * components (ServiceConfigurationForm reads providerSchema.properties,
+ * ConfigFormDialog renders TelephonyProviderUiField objects).
  *
- * Hard rule applied here: LLM = Anthropic only. No OpenAI / GPT anywhere.
+ * Hard rule applied here: LLM = Anthropic only. No OpenAI / GPT.
  */
 
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
 
-// ───────────────────────── Provider catalogs ─────────────────────────
+// ───────────────────────── Telephony providers ─────────────────────────
+
+type TelephonyField = {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  sensitive: boolean;
+  description?: string | null;
+  placeholder?: string | null;
+};
+
+const f = (
+  name: string,
+  label: string,
+  type: string,
+  required: boolean,
+  sensitive: boolean,
+  description?: string,
+  placeholder?: string,
+): TelephonyField => ({ name, label, type, required, sensitive, description: description ?? null, placeholder: placeholder ?? null });
 
 const TELEPHONY_PROVIDERS = [
-  { provider: "twilio", display_name: "Twilio", fields: ["account_sid", "auth_token", "sip_domain"] },
-  { provider: "vobiz", display_name: "Vobiz", fields: ["auth_id", "auth_token", "application_id"] },
-  { provider: "plivo", display_name: "Plivo", fields: ["auth_id", "auth_token"] },
-  { provider: "vonage", display_name: "Vonage", fields: ["api_key", "api_secret", "application_id"] },
-  { provider: "telnyx", display_name: "Telnyx", fields: ["api_key", "connection_id"] },
-  { provider: "cloudonix", display_name: "Cloudonix", fields: ["api_key", "domain"] },
+  {
+    provider: "twilio",
+    display_name: "Twilio",
+    docs_url: "https://www.twilio.com/docs/voice",
+    fields: [
+      f("account_sid", "Account SID", "text", true, false, "Find this in your Twilio Console under Account Info.", "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
+      f("auth_token", "Auth Token", "password", true, true, "Twilio Auth Token from the same Console panel.", "Click Show, then paste here"),
+      f("sip_domain", "SIP Domain", "text", false, false, "Required only for Elastic SIP Trunking outbound calls.", "your-trunk.pstn.twilio.com"),
+      f("sip_username", "SIP Username", "text", false, false, "Optional Elastic SIP credential username."),
+      f("sip_password", "SIP Password", "password", false, true, "Optional Elastic SIP credential password."),
+    ],
+  },
+  {
+    provider: "vobiz",
+    display_name: "Vobiz",
+    docs_url: "https://app.vobiz.ai/docs",
+    fields: [
+      f("auth_id", "Auth ID", "text", true, false, "Vobiz Console → API Keys.", "MA_xxxxxxxxxxxxxxxx"),
+      f("auth_token", "Auth Token", "password", true, true, "Vobiz Auth Token from the same panel."),
+      f("application_id", "Application ID", "text", true, false, "The Application that the inbound calls route to.", "59414766047197048"),
+    ],
+  },
+  {
+    provider: "plivo",
+    display_name: "Plivo",
+    docs_url: "https://www.plivo.com/docs/voice/api/",
+    fields: [
+      f("auth_id", "Auth ID", "text", true, false, "Plivo Console → Account → Account ID.", "MAxxxxxxxxxxxxxxxxxx"),
+      f("auth_token", "Auth Token", "password", true, true, "Plivo Auth Token from the same page."),
+    ],
+  },
+  {
+    provider: "vonage",
+    display_name: "Vonage",
+    docs_url: "https://developer.vonage.com/en/voice/voice-api/overview",
+    fields: [
+      f("api_key", "API Key", "text", true, false, "Vonage Dashboard → API Key.", "abcd1234"),
+      f("api_secret", "API Secret", "password", true, true, "Vonage Dashboard → API Secret."),
+      f("application_id", "Application ID", "text", true, false, "Voice application UUID."),
+      f("private_key", "Private Key", "textarea", true, true, "Paste the contents of private.key from your Vonage Application."),
+    ],
+  },
+  {
+    provider: "telnyx",
+    display_name: "Telnyx",
+    docs_url: "https://developers.telnyx.com/docs/voice",
+    fields: [
+      f("api_key", "API Key v2", "password", true, true, "Telnyx Portal → API Keys.", "KEYxxxxxxxxxxxxxxxx"),
+      f("connection_id", "Connection ID", "text", true, false, "The Telnyx Voice Connection used to dial."),
+    ],
+  },
+  {
+    provider: "cloudonix",
+    display_name: "Cloudonix",
+    docs_url: "https://docs.cloudonix.io/",
+    fields: [
+      f("api_key", "API Key", "password", true, true, "Cloudonix Console → API Keys."),
+      f("domain", "Domain", "text", true, false, "Your Cloudonix tenant domain.", "your-clinic.cloudonix.io"),
+    ],
+  },
 ];
 
-// Anthropic-only LLM (NEVER OpenAI/GPT — Shreyas rule)
-const LLM_SCHEMA = {
+// ───────────────────────── AI provider schemas (JSON-Schema style) ─────────────────────────
+
+type SchemaProperty = {
+  type: string;
+  default?: string | number | boolean | string[];
+  enum?: string[];
+  description?: string;
+  format?: string;
+};
+
+type ProviderSchema = {
+  display_name: string;
+  description?: string;
+  provider_docs_url?: string;
+  properties: Record<string, SchemaProperty>;
+  model_options?: Record<string, string[]>;
+  voice_options?: string[];
+};
+
+const baseLlmProperties = (modelDefault: string): Record<string, SchemaProperty> => ({
+  provider: { type: "string", default: "anthropic" },
+  api_key: { type: "string", default: "", description: "Anthropic API key", format: "password" },
+  model: { type: "string", default: modelDefault, enum: [
+    "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5",
+  ] },
+  temperature: { type: "number", default: 0.7 },
+  max_tokens: { type: "number", default: 4096 },
+});
+
+const LLM_SCHEMA: Record<string, ProviderSchema> = {
   anthropic: {
     display_name: "Anthropic Claude",
-    model_options: [
-      "claude-opus-4-8",
-      "claude-opus-4-7",
-      "claude-sonnet-4-6",
-      "claude-haiku-4-5",
-    ],
-    api_key_field: "anthropic_api_key",
+    description: "Anthropic Claude is the LLM Miss Floss uses for variable extraction, QA, and post-call summaries.",
+    provider_docs_url: "https://docs.anthropic.com/",
+    properties: baseLlmProperties("claude-opus-4-7"),
+    model_options: {
+      "claude-opus-4-8": [],
+      "claude-opus-4-7": [],
+      "claude-sonnet-4-6": [],
+      "claude-haiku-4-5": [],
+    },
   },
 };
 
-const REALTIME_SCHEMA = {
+const REALTIME_SCHEMA: Record<string, ProviderSchema> = {
   google: {
-    display_name: "Gemini Live",
-    model_options: ["gemini-3.1-flash-live-preview", "gemini-2.5-flash-live"],
+    display_name: "Gemini Live (Google)",
+    description: "Gemini Live is a single speech-to-speech model. No separate STT/TTS needed when this is on.",
+    provider_docs_url: "https://ai.google.dev/gemini-api/docs/live",
+    properties: {
+      provider: { type: "string", default: "google" },
+      api_key: { type: "string", default: "", description: "Google AI Studio API key", format: "password" },
+      model: { type: "string", default: "gemini-3.1-flash-live-preview", enum: ["gemini-3.1-flash-live-preview", "gemini-2.5-flash-live"] },
+      voice: { type: "string", default: "Puck", enum: ["Puck", "Charon", "Kore", "Fenrir", "Aoede"] },
+    },
+    model_options: {
+      "gemini-3.1-flash-live-preview": ["Puck", "Charon", "Kore", "Fenrir", "Aoede"],
+      "gemini-2.5-flash-live": ["Puck", "Charon", "Kore"],
+    },
     voice_options: ["Puck", "Charon", "Kore", "Fenrir", "Aoede"],
-    api_key_field: "google_api_key",
   },
 };
 
-const TTS_SCHEMA = {
-  elevenlabs: {
-    display_name: "ElevenLabs",
-    model_options: ["eleven_turbo_v2_5", "eleven_multilingual_v2"],
-    api_key_field: "elevenlabs_api_key",
-  },
-  sarvam: { display_name: "Sarvam", model_options: ["bulbul-v2"], api_key_field: "sarvam_api_key" },
-  cartesia: { display_name: "Cartesia", model_options: ["sonic-2"], api_key_field: "cartesia_api_key" },
-  deepgram: { display_name: "Deepgram Aura", model_options: ["aura-2-en"], api_key_field: "deepgram_api_key" },
-  rime: { display_name: "Rime", model_options: ["mistv2"], api_key_field: "rime_api_key" },
+const ttsProvider = (
+  display: string,
+  apiKeyLabel: string,
+  models: Record<string, string[]>,
+  docsUrl: string,
+  description: string,
+): ProviderSchema => {
+  const modelKeys = Object.keys(models);
+  return {
+    display_name: display,
+    description,
+    provider_docs_url: docsUrl,
+    properties: {
+      provider: { type: "string", default: display.toLowerCase() },
+      api_key: { type: "string", default: "", description: apiKeyLabel, format: "password" },
+      model: { type: "string", default: modelKeys[0], enum: modelKeys },
+      voice_id: { type: "string", default: models[modelKeys[0]][0] ?? "", enum: models[modelKeys[0]] ?? [] },
+    },
+    model_options: models,
+  };
 };
 
-const STT_SCHEMA = {
-  deepgram: { display_name: "Deepgram", model_options: ["nova-3"], api_key_field: "deepgram_api_key" },
-  sarvam: { display_name: "Sarvam", model_options: ["saarika-v2"], api_key_field: "sarvam_api_key" },
+const TTS_SCHEMA: Record<string, ProviderSchema> = {
+  elevenlabs: ttsProvider("ElevenLabs", "ElevenLabs API Key",
+    { eleven_turbo_v2_5: ["Rachel", "Domi", "Bella", "Antoni"], eleven_multilingual_v2: ["Rachel", "Bella"] },
+    "https://elevenlabs.io/docs/api-reference", "Premium English voices, best in class for clinical demos."),
+  sarvam: ttsProvider("Sarvam", "Sarvam API Key", { "bulbul-v2": ["meera", "arjun"] },
+    "https://docs.sarvam.ai/", "Built for Indic + multilingual; great fallback when ElevenLabs cost matters."),
+  cartesia: ttsProvider("Cartesia", "Cartesia API Key", { "sonic-2": ["sonic-default"] },
+    "https://docs.cartesia.ai/", "Sonic 2 is the fastest TTS available, ~75ms time to first audio."),
+  deepgram: ttsProvider("Deepgram Aura", "Deepgram API Key", { "aura-2-en": ["aura-2-en-us-female"] },
+    "https://developers.deepgram.com/docs/aura-2", "Aura 2 by Deepgram, paired well with their STT for the same vendor billing."),
+  rime: ttsProvider("Rime", "Rime API Key", { mistv2: ["mistv2"] },
+    "https://docs.rime.ai/", "Rime MistV2, natural-sounding North American English."),
 };
+
+const STT_SCHEMA: Record<string, ProviderSchema> = {
+  deepgram: {
+    display_name: "Deepgram",
+    description: "Deepgram Nova 3 is the most accurate streaming STT we benchmarked.",
+    provider_docs_url: "https://developers.deepgram.com/docs/nova-3",
+    properties: {
+      provider: { type: "string", default: "deepgram" },
+      api_key: { type: "string", default: "", description: "Deepgram API Key", format: "password" },
+      model: { type: "string", default: "nova-3", enum: ["nova-3", "nova-2"] },
+      language: { type: "string", default: "en", enum: ["en", "fr", "es"] },
+    },
+    model_options: { "nova-3": [], "nova-2": [] },
+  },
+  sarvam: {
+    display_name: "Sarvam",
+    description: "Sarvam Saarika v2 for Hindi + Indic languages.",
+    provider_docs_url: "https://docs.sarvam.ai/",
+    properties: {
+      provider: { type: "string", default: "sarvam" },
+      api_key: { type: "string", default: "", description: "Sarvam API Key", format: "password" },
+      model: { type: "string", default: "saarika-v2", enum: ["saarika-v2"] },
+    },
+    model_options: { "saarika-v2": [] },
+  },
+};
+
+const EMBEDDING_SCHEMA: Record<string, ProviderSchema> = {
+  voyage: {
+    display_name: "Voyage AI",
+    description: "Voyage embeddings, Anthropic-recommended, no OpenAI dependency.",
+    provider_docs_url: "https://docs.voyageai.com/",
+    properties: {
+      provider: { type: "string", default: "voyage" },
+      api_key: { type: "string", default: "", description: "Voyage API Key", format: "password" },
+      model: { type: "string", default: "voyage-3", enum: ["voyage-3", "voyage-3-lite"] },
+    },
+    model_options: { "voyage-3": [], "voyage-3-lite": [] },
+  },
+};
+
+// ───────────────────────── Voice library ─────────────────────────
 
 const VOICE_LIBRARIES: Record<string, Array<{ id: string; name: string; gender: string; preview_url?: string }>> = {
   elevenlabs: [
@@ -80,7 +255,7 @@ const VOICE_LIBRARIES: Record<string, Array<{ id: string; name: string; gender: 
   rime: [{ id: "mistv2", name: "MistV2", gender: "female" }],
 };
 
-// ───────────────────────── Response builders ─────────────────────────
+// ───────────────────────── Identity defaults ─────────────────────────
 
 function defaultUser() {
   return {
@@ -111,21 +286,20 @@ function defaultUserConfigurations() {
   };
 }
 
+// ───────────────────────── Path router ─────────────────────────
+
 function defaultsForPath(path: string, method: string): unknown {
   const p = "/" + path;
 
-  // ── Health + version ─────────────────────────────
   if (p === "/health") return { status: "ok", demo: true };
   if (p === "/version") return { version: "demo-1.33.0" };
 
-  // ── Auth & user identity ─────────────────────────
   if (p === "/auth/me" || p === "/user/auth-user") return defaultUser();
   if (p.startsWith("/auth/")) return { ok: true };
 
-  // ── User configurations ──────────────────────────
   if (p === "/user/configurations/user") return defaultUserConfigurations();
   if (p === "/user/configurations/defaults") {
-    return { llm: LLM_SCHEMA, tts: TTS_SCHEMA, stt: STT_SCHEMA, realtime: REALTIME_SCHEMA };
+    return { llm: LLM_SCHEMA, tts: TTS_SCHEMA, stt: STT_SCHEMA, realtime: REALTIME_SCHEMA, embeddings: EMBEDDING_SCHEMA };
   }
   if (p === "/user/configurations/user/validate") return { valid: true, errors: [] };
   if (p.startsWith("/user/configurations/voices/")) {
@@ -133,32 +307,22 @@ function defaultsForPath(path: string, method: string): unknown {
     return { voices: VOICE_LIBRARIES[provider] ?? [] };
   }
 
-  // ── User keys ────────────────────────────────────
   if (p === "/user/api-keys") return { api_keys: [] };
   if (p === "/user/service-keys") return { service_keys: [] };
 
-  // ── Workflows ────────────────────────────────────
   if (p === "/workflow/count") return { total: 0, active: 0, inactive: 0 };
   if (p === "/workflow/fetch" || p === "/workflow/summary") return { workflows: [] };
   if (p === "/workflow/templates") return { templates: [] };
   if (p.startsWith("/workflow/") && p.endsWith("/runs")) return { runs: [], total: 0 };
   if (p.startsWith("/workflow/")) return { id: 0, name: "", status: "draft", nodes: [], edges: [] };
 
-  // ── Campaigns ────────────────────────────────────
   if (p === "/campaign" || p === "/campaign/") return { campaigns: [] };
   if (p.startsWith("/campaign/") && p.endsWith("/progress")) return { total: 0, completed: 0, in_progress: 0, failed: 0 };
   if (p.startsWith("/campaign/") && p.endsWith("/runs")) return { runs: [], total: 0 };
   if (p.startsWith("/campaign/")) {
-    return {
-      id: 0,
-      name: "",
-      state: "draft",
-      created_at: new Date(0).toISOString(),
-      updated_at: new Date(0).toISOString(),
-    };
+    return { id: 0, name: "", state: "draft", created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() };
   }
 
-  // ── Telephony ────────────────────────────────────
   if (p === "/organizations/telephony-providers/metadata") return { providers: TELEPHONY_PROVIDERS };
   if (p === "/organizations/telephony-configs") return { configurations: [] };
   if (p.includes("/telephony-config-warnings")) return { warnings: [] };
@@ -168,7 +332,6 @@ function defaultsForPath(path: string, method: string): unknown {
   }
   if (p === "/organizations/telephony-config") return { configuration: null };
 
-  // ── Organizations ────────────────────────────────
   if (p === "/organizations/campaign-defaults") return { defaults: {} };
   if (p === "/organizations/langfuse-credentials") return { credentials: null };
   if (p === "/organizations/usage/current-period") return { used: 0, total: 1000, period_start: new Date(0).toISOString(), period_end: new Date(0).toISOString() };
@@ -179,25 +342,19 @@ function defaultsForPath(path: string, method: string): unknown {
   if (p === "/organizations/reports/daily/runs") return { runs: [] };
   if (p === "/organizations/reports/workflows") return { workflows: [] };
 
-  // ── Tools / Files / Folders / Recordings / Knowledge base ────
   if (p === "/tools" || p === "/tools/") return { tools: [] };
   if (p === "/folder" || p === "/folder/") return { folders: [] };
   if (p === "/workflow/recordings" || p.includes("/recordings")) return { recordings: [] };
   if (p.includes("/knowledge-base/documents")) return { documents: [] };
 
-  // ── Credentials ──────────────────────────────────
   if (p === "/credentials" || p === "/credentials/") return { credentials: [] };
 
-  // ── Node types ──────────────────────────────────
   if (p === "/node-types") return { node_types: [] };
 
-  // ── Superuser (always empty in demo) ────────────
   if (p.startsWith("/superuser/")) return { items: [], total: 0 };
 
-  // ── Writes ───────────────────────────────────────
   if (method !== "GET") return { success: true, demo: true };
 
-  // ── Generic GET fallback ─────────────────────────
   return {};
 }
 
