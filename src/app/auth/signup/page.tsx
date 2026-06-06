@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { signupApiV1AuthSignupPost } from "@/client/sdk.gen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getSupabaseClient } from "@/lib/supabase-client";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -32,26 +32,43 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const res = await signupApiV1AuthSignupPost({
-        body: { email, password },
+      const supa = getSupabaseClient();
+      const { data, error } = await supa.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin + "/after-sign-in" },
       });
 
-      if (res.error || !res.data) {
-        const detail = (res.error as { detail?: string })?.detail;
-        toast.error(detail || "Signup failed");
+      if (error || !data.user) {
+        toast.error(error?.message || "Signup failed");
         return;
       }
 
-      // Set httpOnly cookies via server route
+      const token = data.session?.access_token || data.user.id;
+      const user = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.email?.split("@")[0] || "Clinic owner",
+        provider: "supabase",
+      };
+
+      // Set httpOnly cookies via server route so the rest of the app sees a valid OSS session
       await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: res.data.token, user: res.data.user }),
+        body: JSON.stringify({ token, user }),
       });
 
+      if (!data.session) {
+        toast.success("Check your email to confirm your account.");
+        return;
+      }
+
+      toast.success("Welcome to Miss Floss");
       window.location.href = "/after-sign-in";
-    } catch {
-      toast.error("An error occurred. Please try again.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "An error occurred. Please try again.";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { loginApiV1AuthLoginPost } from "@/client/sdk.gen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getSupabaseClient } from "@/lib/supabase-client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -20,26 +20,33 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await loginApiV1AuthLoginPost({
-        body: { email, password },
-      });
+      const supa = getSupabaseClient();
+      const { data, error } = await supa.auth.signInWithPassword({ email, password });
 
-      if (res.error || !res.data) {
-        const detail = (res.error as { detail?: string })?.detail;
-        toast.error(detail || "Login failed");
+      if (error || !data.session) {
+        toast.error(error?.message || "Login failed");
         return;
       }
 
-      // Set httpOnly cookies via server route
+      const token = data.session.access_token;
+      const user = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.email?.split("@")[0] || "Clinic owner",
+        provider: "supabase",
+      };
+
       await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: res.data.token, user: res.data.user }),
+        body: JSON.stringify({ token, user }),
       });
 
+      toast.success("Welcome back");
       window.location.href = "/after-sign-in";
-    } catch {
-      toast.error("An error occurred. Please try again.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "An error occurred. Please try again.";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
