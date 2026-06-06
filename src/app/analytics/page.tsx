@@ -58,8 +58,8 @@ function fmtCost(usd: number) {
   return usd != null ? `$${usd.toFixed(4)}` : "—";
 }
 
-const ACCENT = "#8258F2";
-const ACCENT2 = "#c5b8ff";
+const ACCENT = "#0891B2";
+const ACCENT2 = "#0891B2";
 
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function AnalyticsPage() {
@@ -115,7 +115,7 @@ export default function AnalyticsPage() {
               onClick={() => setRange(d)}
               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                 range === d
-                  ? "bg-[#8258F2] text-white"
+                  ? "bg-[#0891B2] text-white"
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
               }`}
             >

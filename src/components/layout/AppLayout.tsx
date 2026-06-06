@@ -121,7 +121,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
 
             {/* Optional sticky tabs */}
             {stickyTabs && (
-              <div className="sticky top-0 z-40 bg-[#2a2e39] border-b border-gray-700">
+              <div className="sticky top-0 z-40 bg-[#FFFFFF] border-b border-gray-200">
                 <div className="container mx-auto px-4">
                   <div className="flex items-center justify-center py-2">
                     {stickyTabs}
