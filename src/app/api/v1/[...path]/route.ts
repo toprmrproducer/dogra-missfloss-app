@@ -374,9 +374,105 @@ function defaultsForPath(path: string, method: string): unknown {
   return {};
 }
 
+// Path-aware POST/PUT response shapes for endpoints where the UI uses the
+// returned entity (e.g. router.push(`/workflow/${response.data.id}`)). Falls
+// back to {success:true,demo:true} for fire-and-forget writes.
+async function writeResponseForPath(
+  path: string,
+  method: string,
+  body: Record<string, unknown> | null,
+): Promise<unknown> {
+  const p = "/" + path;
+  const fakeId = Math.floor(Math.random() * 1_000_000) + 1; // demo id, > 0
+  const now = new Date().toISOString();
+
+  // Workflow create endpoints both return WorkflowResponse so the UI can
+  // redirect to /workflow/{id}.
+  if (
+    p === "/workflow/create/definition" ||
+    p === "/workflow/create/template" ||
+    p === "/workflow/create-definition" ||
+    p === "/workflow/create-template" ||
+    (p === "/workflow" && method === "POST")
+  ) {
+    return {
+      id: fakeId,
+      name: (body?.name as string) || `Demo Agent ${fakeId}`,
+      status: "draft",
+      created_at: now,
+      workflow_definition: body?.workflow_definition || {},
+      current_definition_id: null,
+      template_context_variables: body?.template_context_variables || {},
+    };
+  }
+
+  // Telephony create + update return TelephonyConfigurationDetail so the
+  // dialog can toast success + close + parent can navigate to the new config.
+  if (p === "/organizations/telephony-configs" && method === "POST") {
+    return {
+      id: fakeId,
+      name: (body?.name as string) || `Demo provider ${fakeId}`,
+      provider: extractProvider(body),
+      is_default_outbound: Boolean(body?.is_default_outbound),
+      credentials: {},
+      phone_numbers: [],
+    };
+  }
+  if (p.startsWith("/organizations/telephony-configs/") && (method === "PUT" || method === "PATCH")) {
+    return {
+      id: fakeId,
+      name: (body?.name as string) || `Demo provider ${fakeId}`,
+      provider: extractProvider(body) || "twilio",
+      is_default_outbound: Boolean(body?.is_default_outbound),
+      credentials: {},
+      phone_numbers: [],
+    };
+  }
+
+  // Campaign create returns the new campaign with id so the UI can navigate.
+  if (p === "/campaign/create" || (p === "/campaign" && method === "POST")) {
+    return {
+      id: fakeId,
+      name: (body?.name as string) || `Demo Campaign ${fakeId}`,
+      state: "draft",
+      created_at: now,
+      updated_at: now,
+    };
+  }
+
+  // Tool, Folder, Credential, Api/Service Key create all return the entity.
+  if (p === "/tools" && method === "POST") return { id: fakeId, name: (body?.name as string) || "Demo tool", created_at: now };
+  if (p === "/folder" && method === "POST") return { id: fakeId, name: (body?.name as string) || "Demo folder", created_at: now };
+  if (p === "/credentials" && method === "POST") return { uuid: String(fakeId), name: (body?.name as string) || "Demo credential", created_at: now };
+  if (p === "/user/api-keys" && method === "POST") return { id: fakeId, name: (body?.name as string) || "Demo key", key: `mf_demo_${fakeId}`, created_at: now };
+  if (p === "/user/service-keys" && method === "POST") return { id: fakeId, name: (body?.name as string) || "Demo svc key", key: `mf_svc_${fakeId}`, created_at: now };
+
+  // Default ack for writes.
+  return { success: true, demo: true };
+}
+
+function extractProvider(body: Record<string, unknown> | null): string {
+  if (!body) return "twilio";
+  const config = body.config as Record<string, unknown> | undefined;
+  if (config) {
+    const keys = Object.keys(config);
+    if (keys.length === 1) return keys[0];
+  }
+  return (body.provider as string) || "twilio";
+}
+
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   const joined = (path || []).join("/");
+
+  if (req.method !== "GET") {
+    let body: Record<string, unknown> | null = null;
+    try {
+      body = (await req.json()) as Record<string, unknown>;
+    } catch { body = null; }
+    return json(await writeResponseForPath(joined, req.method, body));
+  }
+
   return json(defaultsForPath(joined, req.method));
 }
 
