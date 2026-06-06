@@ -580,7 +580,7 @@ export default function UsagePage() {
                                     <div className="mt-4 p-3 bg-muted rounded-md">
                                         <p className="text-sm text-muted-foreground">
                                             Total for filtered period: <span className="font-semibold text-foreground">
-                                                {usageHistory.total_miss-floss_tokens.toLocaleString()} Miss Floss Tokens
+                                                {usageHistory.total_dograh_tokens.toLocaleString()} Miss Floss Tokens
                                             </span>
                                             {' • '}
                                             <span className="font-semibold text-foreground">
