@@ -307,12 +307,14 @@ function defaultsForPath(path: string, method: string): unknown {
     return { voices: VOICE_LIBRARIES[provider] ?? [] };
   }
 
-  if (p === "/user/api-keys") return { api_keys: [] };
-  if (p === "/user/service-keys") return { service_keys: [] };
+  // Both return raw arrays per SDK types.
+  if (p === "/user/api-keys") return [];
+  if (p === "/user/service-keys") return [];
 
   if (p === "/workflow/count") return { total: 0, active: 0, inactive: 0 };
-  if (p === "/workflow/fetch" || p === "/workflow/summary") return { workflows: [] };
-  if (p === "/workflow/templates") return { templates: [] };
+  // The next three endpoints return raw arrays per SDK types.
+  if (p === "/workflow/fetch" || p === "/workflow/summary") return [];
+  if (p === "/workflow/templates") return [];
   if (p.startsWith("/workflow/") && p.endsWith("/runs")) return { runs: [], total: 0 };
   if (p.startsWith("/workflow/")) return { id: 0, name: "", status: "draft", nodes: [], edges: [] };
 
@@ -332,7 +334,20 @@ function defaultsForPath(path: string, method: string): unknown {
   }
   if (p === "/organizations/telephony-config") return { configuration: null };
 
-  if (p === "/organizations/campaign-defaults") return { defaults: {} };
+  if (p === "/organizations/campaign-defaults") {
+    return {
+      concurrent_call_limit: 5,
+      from_numbers_count: 1,
+      default_retry_config: {
+        enabled: true,
+        max_retries: 2,
+        retry_delay_seconds: 600,
+        retry_on_busy: true,
+        retry_on_no_answer: true,
+      },
+      last_campaign_settings: null,
+    };
+  }
   if (p === "/organizations/langfuse-credentials") return { credentials: null };
   if (p === "/organizations/usage/current-period") return { used: 0, total: 1000, period_start: new Date(0).toISOString(), period_end: new Date(0).toISOString() };
   if (p === "/organizations/usage/daily-breakdown") return { breakdown: [] };
@@ -342,12 +357,13 @@ function defaultsForPath(path: string, method: string): unknown {
   if (p === "/organizations/reports/daily/runs") return { runs: [] };
   if (p === "/organizations/reports/workflows") return { workflows: [] };
 
-  if (p === "/tools" || p === "/tools/") return { tools: [] };
-  if (p === "/folder" || p === "/folder/") return { folders: [] };
+  // Raw arrays per SDK types: tools, folder, credentials. Recordings + node-types stay wrapped.
+  if (p === "/tools" || p === "/tools/") return [];
+  if (p === "/folder" || p === "/folder/") return [];
   if (p === "/workflow/recordings" || p.includes("/recordings")) return { recordings: [] };
   if (p.includes("/knowledge-base/documents")) return { documents: [] };
 
-  if (p === "/credentials" || p === "/credentials/") return { credentials: [] };
+  if (p === "/credentials" || p === "/credentials/") return [];
 
   if (p === "/node-types") return { node_types: [] };
 
