@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  output: 'standalone',
+  // output: 'standalone' removed — Netlify uses @netlify/plugin-nextjs adapter
   experimental: {
     serverSourceMaps: true,
   },
